@@ -4,9 +4,5 @@ find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(NONE)
 
 target_sources(app PRIVATE
-	src/main.c
-	src/model_handler.c
-    scr/txp_ctrl_srv.c
-    scr/txp_crtl_cli.c
-    scr/txp_crtl.c)
+	src/main.c)
 target_include_directories(app PRIVATE include)

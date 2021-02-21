@@ -39,6 +39,16 @@ struct bt_hci_rp_vs_read_tx_power_level {
 	int8_t  tx_power_level;
 } __packed;
 
+/* Copied from hci.h (lines 629 to 637)*/
+#define BT_HCI_OP_READ_RSSI                     BT_OP(BT_OGF_STATUS, 0x0005)
+struct bt_hci_cp_read_rssi {
+	uint16_t handle;
+} __packed;
+struct bt_hci_rp_read_rssi {
+	uint8_t  status;
+	uint16_t handle;
+	int8_t   rssi;
+} __packed;
 
 /*MESSAGE TYPES*/
 

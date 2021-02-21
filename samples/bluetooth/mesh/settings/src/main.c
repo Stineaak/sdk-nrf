@@ -10,7 +10,9 @@
 #include <bluetooth/mesh/dk_prov.h>
 #include <dk_buttons_and_leds.h>
 
-// ONOFF Server
+#include "settings_mod.h"
+
+/* ONOFF Server
 
 static void led_set(struct bt_mesh_onoff_srv *srv, struct bt_mesh_msg_ctx *ctx,
 		    const struct bt_mesh_onoff_set *set,
@@ -31,6 +33,7 @@ static const struct bt_mesh_onoff_srv_handlers onoff_handlers = {
 };
 
 static struct bt_mesh_onoff_srv onoff_srv = BT_MESH_ONOFF_SRV_INIT(&onoff_handlers);
+*/
 
 // *********************** SNURRE I GANG BT MESH ************************
 

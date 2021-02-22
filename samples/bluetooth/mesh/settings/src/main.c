@@ -12,7 +12,7 @@
 
 #include "settings_mod.h"
 
-/* ONOFF Server
+/* ONOFF Server [Testing]
 
 static void led_set(struct bt_mesh_onoff_srv *srv, struct bt_mesh_msg_ctx *ctx,
 		    const struct bt_mesh_onoff_set *set,

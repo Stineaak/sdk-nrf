@@ -3,11 +3,10 @@
 #include "model_utils.h"
 #include <bluetooth/mesh/models.h>
 
-/* Receiving messages
-Message handlers: bt_mesh_model_op.func, used to process the received message
-*/
+/* Receiving messages */ 
 
-static void handle_message_status(struct bt_mesh_model *model,
+// Message handlers: bt_mesh_model_op.func, used to process the received message
+static void handle_status_message(struct bt_mesh_model *model,
                                   struct bt_mesh_msg_ctx *ctx,
                                   struct net_buf_simple *buf)
 {
@@ -16,7 +15,7 @@ static void handle_message_status(struct bt_mesh_model *model,
 
 // OPcode list - defines a list of messages that the client will receive
 const struct bt_mesh_model_op _bt_mesh_settings_cli_op[] = {
-    { MESSAGE_DEVICE_SETTINGS_STATUS_OP,    BT_MESH_DEVICE_SETTINGS_MSG_MINLEN_STATUS,    handle_message_status },
+    { BT_MESH_DEVICE_SETTINGS_STATUS_OP,    BT_MESH_DEVICE_SETTINGS_MSG_MINLEN_STATUS,    handle_message_status },
     BT_MESH_MODEL_OP_END,
 }
 
@@ -39,21 +38,23 @@ static int send_get_message(struct bt_mesh_settings_cli *cli,
 
     // prepare a buffer that will contain the message data together with the opcode:
     BT_MESH_MODEL_BUF_DEFINE(buf, 
-        MESSAGE_DEVICE_SETTINGS_GET_OP,
+        BT_MESH_DEVICE_SETTINGS_GET_OP,
         BT_MESH_DEVICE_SETTINGS_MSG_MINLEN_GET);
     // set the opcode of the message:
-    bt_mesh_model_msg_init(&buf, MESSAGE_DEVICE_SETTINGS_GET_OP);
+    bt_mesh_model_msg_init(&buf, BT_MESH_DEVICE_SETTINGS_GET_OP);
 
     // DO: Fill the message buffer here: ->get_txp()
 
     return bt_mesh_model_send(model, &ctx, &buf, NULL, NULL);
 }
 
-// initialize the publication buffer for SET message
+// Initialize the publication buffer for SET message
 static struct bt_mesh_model_pub pub_ctx = {
-    .msg = NET_BUF_SIMPLE(BT_MESH_MODEL_BUF_LEN(MESSAGE_DEVICE_SETTINGS_SET_OP,
+    .msg = NET_BUF_SIMPLE(BT_MESH_MODEL_BUF_LEN(BT_MESH_DEVICE_SETTINGS_SET_OP,
                                                 BT_MESH_DEVICE_SETTINGS_MSG_MAXLEN_SET)),
 }
+
+//static int update_handler(struct bt_mesh_model *model) // DO: complete
 
 static int send_set_message(struct bt_mesh_settings_cli *cli,
 			  struct bt_mesh_msg_ctx *ctx,
@@ -63,17 +64,36 @@ static int send_set_message(struct bt_mesh_settings_cli *cli,
 
     // prepare a buffer that will contain the message data together with the opcode:
     BT_MESH_MODEL_BUF_DEFINE(buf, 
-        MESSAGE_DEVICE_SETTINGS_SET_OP,
+        BT_MESH_DEVICE_SETTINGS_SET_OP,
         BT_MESH_DEVICE_SETTINGS_MSG_MINLEN_SET);
     
 	// set the opcode of the message:
-    bt_mesh_model_msg_init(&buf, MESSAGE_DEVICE_SETTINGS_SET_OP);
+    bt_mesh_model_msg_init(&buf, BT_MESH_DEVICE_SETTINGS_SET_OP);
 
 	// add to buffer:
 	net_buf_simple_add_u8(&buf, set->txp_value);
 
     return bt_mesh_model_send(model, &ctx, &buf, NULL, NULL);
 }
+
+
+/* Callbacks: -> Additional model initialization */
+static int bt_mesh_settings_cli_init(struct bt_mesh_model *model)
+{
+	struct bt_mesh_settings_cli *cli = model->user_data;
+
+	cli->model = model;
+	net_buf_simple_init(cli->pub.msg, 0);
+	model_ack_init(&cli->ack_ctx);
+
+	return 0;
+}
+
+const struct bt_mesh_model_cb _bt_mesh_settings_cli_cb = {
+	.init = bt_mesh_settings_cli_init,
+};
+
+
 
 /* ONOFF CLIENT:
 

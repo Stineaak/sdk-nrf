@@ -1,7 +1,14 @@
+/*
+ * Copyright (c) 2021 Nordic Semiconductor ASA
+ *
+ * SPDX-License-Identifier: LicenseRef-BSD-5-Clause-Nordic
+ */
+#include <string.h>
 #include <stdlib.h>
-#include "settings_cli.h"
 #include "model_utils.h"
 #include <bluetooth/mesh/models.h>
+
+#include "settings_cli.h"
 
 /* Receiving messages */ 
 
@@ -15,9 +22,10 @@ static void handle_status_message(struct bt_mesh_model *model,
 
 // OPcode list - defines a list of messages that the client will receive
 const struct bt_mesh_model_op _bt_mesh_settings_cli_op[] = {
-    { BT_MESH_DEVICE_SETTINGS_STATUS_OP,    BT_MESH_DEVICE_SETTINGS_MSG_MINLEN_STATUS,    handle_message_status },
+    { BT_MESH_DEVICE_SETTINGS_STATUS_OP,    BT_MESH_DEVICE_SETTINGS_MSG_MINLEN_STATUS,
+		handle_status_message },
     BT_MESH_MODEL_OP_END,
-}
+};
 
 /* Sending messages */
 
@@ -25,7 +33,7 @@ static int send_get_message(struct bt_mesh_settings_cli *cli,
 			  struct bt_mesh_msg_ctx *ctx,
 			  struct bt_mesh_settings_status *rsp) // (struct bt_mesh_model *model, uint16_t addr)
 {
-    // DO: check on specific node? :
+    // DO: Check on specific node? :
 	
 	/* If you want your model to control a destination address,
      or some other parameters of a message,
@@ -37,16 +45,17 @@ static int send_get_message(struct bt_mesh_settings_cli *cli,
     };*/
 
     // prepare a buffer that will contain the message data together with the opcode:
-    BT_MESH_MODEL_BUF_DEFINE(buf, 
+    BT_MESH_MODEL_BUF_DEFINE(msg, 
         BT_MESH_DEVICE_SETTINGS_GET_OP,
-        BT_MESH_DEVICE_SETTINGS_MSG_MINLEN_GET);
+        BT_MESH_DEVICE_SETTINGS_MSG_LEN_GET);
     // set the opcode of the message:
-    bt_mesh_model_msg_init(&buf, BT_MESH_DEVICE_SETTINGS_GET_OP);
+    bt_mesh_model_msg_init(&msg, BT_MESH_DEVICE_SETTINGS_GET_OP);
 
-    // DO: Fill the message buffer here: ->get_txp()
-
-    return bt_mesh_model_send(model, &ctx, &buf, NULL, NULL);
-}
+	return model_ackd_send(cli->model, ctx, &msg,
+			       rsp ? &cli->ack_ctx : NULL,
+			       BT_MESH_DEVICE_SETTINGS_STATUS_OP, rsp);
+    //return bt_mesh_model_send(cli->model, &ctx, &buf, NULL, NULL);
+};
 
 // Initialize the publication buffer for SET message
 static struct bt_mesh_model_pub pub_ctx = {
@@ -59,22 +68,24 @@ static struct bt_mesh_model_pub pub_ctx = {
 static int send_set_message(struct bt_mesh_settings_cli *cli,
 			  struct bt_mesh_msg_ctx *ctx,
 			  const struct bt_mesh_settings_set *set,
-			  struct bt_mesh_settings_status *rsp)    // DO: fix parameters...
+			  struct bt_mesh_settings_status *rsp)
 {
 
     // prepare a buffer that will contain the message data together with the opcode:
-    BT_MESH_MODEL_BUF_DEFINE(buf, 
+    BT_MESH_MODEL_BUF_DEFINE(msg, 
         BT_MESH_DEVICE_SETTINGS_SET_OP,
         BT_MESH_DEVICE_SETTINGS_MSG_MINLEN_SET);
     
 	// set the opcode of the message:
-    bt_mesh_model_msg_init(&buf, BT_MESH_DEVICE_SETTINGS_SET_OP);
+    bt_mesh_model_msg_init(&msg, BT_MESH_DEVICE_SETTINGS_SET_OP);
 
 	// add to buffer:
-	net_buf_simple_add_u8(&buf, set->txp_value);
+	net_buf_simple_add_u8(&msg, set->txp_value);
 
-    return bt_mesh_model_send(model, &ctx, &buf, NULL, NULL);
-}
+    return model_ackd_send(cli->model, ctx, &msg,
+			       rsp ? &cli->ack_ctx : NULL,
+			       BT_MESH_DEVICE_SETTINGS_STATUS_OP, rsp);
+};
 
 
 /* Callbacks: -> Additional model initialization */

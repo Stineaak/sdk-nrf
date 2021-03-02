@@ -4,21 +4,138 @@
  * SPDX-License-Identifier: LicenseRef-BSD-5-Clause-Nordic
  */
 
+#include <zephyr/types.h>
+#include <stddef.h>
+#include <sys/printk.h>
+#include <sys/util.h>
+#include <sys/byteorder.h>
+
 #include <bluetooth/bluetooth.h>
+#include <bluetooth/hci.h>
+#include <bluetooth/hci_vs.h>
+
+#include <bluetooth/conn.h>
+#include <bluetooth/uuid.h>
+#include <bluetooth/gatt.h>
+#include <bluetooth/services/hrs.h>
+
 #include <bluetooth/mesh.h>
 #include <bluetooth/mesh/models.h>
 #include <bluetooth/mesh/dk_prov.h>
 #include <dk_buttons_and_leds.h>
 
-#include "settings_mod.h"
+//#include "settings_mod.h"
+#define BT_MESH_NORDIC_SEMI_COMPANY_ID 0x0059
+#define DEVICE_BEACON_TXPOWER_NUM  8
+// ONOFF Server [Testing]
 
-/* ONOFF Server [Testing]
+static void TEST_set_tx_power(uint8_t handle_type, uint16_t handle, uint8_t txp_lvl)
+{
+	struct bt_hci_cp_vs_write_tx_power_level *cp; // command power (?)
+	struct bt_hci_rp_vs_write_tx_power_level *rp; // real power (?)
+	struct net_buf *buf, *rsp = NULL;
+	int err;
+
+	// Allocate a HCI command buffer
+	buf = bt_hci_cmd_create(BT_HCI_OP_VS_WRITE_TX_POWER_LEVEL,
+				sizeof(*cp));
+	if (!buf) {
+		printk("Unable to allocate command buffer\n");
+		return;
+	}
+
+	cp = net_buf_add(buf, sizeof(*cp));
+	cp->handle = sys_cpu_to_le16(handle);
+	cp->handle_type = handle_type;
+	cp->tx_power_level = txp_lvl;
+
+	//Send a HCI command synchronously
+	err = bt_hci_cmd_send_sync(BT_HCI_OP_VS_WRITE_TX_POWER_LEVEL,
+				   buf, &rsp);
+	if (err) {
+		uint8_t reason = rsp ?
+			((struct bt_hci_rp_vs_write_tx_power_level *)
+			  rsp->data)->status : 0;
+		printk("Set Tx power err: %d reason 0x%02x\n", err, reason);
+		return;
+	}
+
+	rp = (void *)rsp->data;
+	printk("Actual Tx Power: %d\n", rp->selected_tx_power);
+
+	net_buf_unref(rsp);
+}
+
+
+static void TEST_get_tx_power(uint8_t handle_type, uint16_t handle, uint8_t *txp_lvl)
+{
+	struct bt_hci_cp_vs_read_tx_power_level *cp;
+	struct bt_hci_rp_vs_read_tx_power_level *rp;
+	struct net_buf *buf, *rsp = NULL;
+	int err;
+
+	*txp_lvl = 0xFF;
+	buf = bt_hci_cmd_create(BT_HCI_OP_VS_READ_TX_POWER_LEVEL,
+				sizeof(*cp));
+	if (!buf) {
+		printk("Unable to allocate command buffer\n");
+		return;
+	}
+
+	cp = net_buf_add(buf, sizeof(*cp));
+	cp->handle = sys_cpu_to_le16(handle);
+	cp->handle_type = handle_type;
+
+	err = bt_hci_cmd_send_sync(BT_HCI_OP_VS_READ_TX_POWER_LEVEL,
+				   buf, &rsp);
+	if (err) {
+		uint8_t reason = rsp ?
+			((struct bt_hci_rp_vs_read_tx_power_level *)
+			  rsp->data)->status : 0;
+		printk("Read Tx power err: %d reason 0x%02x\n", err, reason);
+		return;
+	}
+
+	rp = (void *)rsp->data;
+	*txp_lvl = rp->tx_power_level;
+
+	net_buf_unref(rsp);
+}
 
 static void led_set(struct bt_mesh_onoff_srv *srv, struct bt_mesh_msg_ctx *ctx,
 		    const struct bt_mesh_onoff_set *set,
 		    struct bt_mesh_onoff_status *rsp)
 {
-	printk("LED set\n");
+	printk("LED set testing...\n");
+
+	static struct bt_conn *default_conn;
+	default_conn = NULL;
+	int8_t txp_get = 0xFF;
+	
+	static const int8_t txp[DEVICE_BEACON_TXPOWER_NUM] = {4, 0, -3, -8,
+						    -15, -18, -23, -30};
+	uint8_t idx = 3;
+
+	if (!default_conn) {
+
+			printk("Get initial Tx power level -> ");
+			TEST_get_tx_power(BT_HCI_VS_LL_HANDLE_TYPE_ADV,
+				     0, &txp_get);
+			printk("TXP = %d\n", txp_get);
+
+			k_sleep(K_SECONDS(5));
+
+			printk("Set Tx power level to %d\n", txp[idx]);
+			TEST_set_tx_power(BT_HCI_VS_LL_HANDLE_TYPE_ADV,
+				     0, txp[idx]);
+
+			k_sleep(K_SECONDS(5));
+
+			printk("New Tx power level -> ");
+			TEST_get_tx_power(BT_HCI_VS_LL_HANDLE_TYPE_ADV,
+				     0, &txp_get);
+			printk("TXP = %d\n", txp_get);
+	}
 }
 
 static void led_get(struct bt_mesh_onoff_srv *srv, struct bt_mesh_msg_ctx *ctx,
@@ -30,10 +147,12 @@ static void led_get(struct bt_mesh_onoff_srv *srv, struct bt_mesh_msg_ctx *ctx,
 static const struct bt_mesh_onoff_srv_handlers onoff_handlers = {
 	.set = led_set,
 	.get = led_get,
+	//.set = handle_set_message,
+	//.get = handle_get_message,
 };
 
 static struct bt_mesh_onoff_srv onoff_srv = BT_MESH_ONOFF_SRV_INIT(&onoff_handlers);
-*/
+
 
 // *********************** SNURRE I GANG BT MESH ************************
 
@@ -102,7 +221,7 @@ static struct bt_mesh_elem elements[] = {
 };
 
 static const struct bt_mesh_comp comp = {
-	.cid = CONFIG_BT_COMPANY_ID,
+	.cid = BT_MESH_NORDIC_SEMI_COMPANY_ID,
 	.elem = elements,
 	.elem_count = ARRAY_SIZE(elements),
 };

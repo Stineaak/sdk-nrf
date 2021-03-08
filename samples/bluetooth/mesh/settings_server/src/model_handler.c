@@ -1,7 +1,15 @@
 /*
- * Copyright (c) 2021 Nordic Semiconductor ASA
+ * Copyright (c) 2019 Nordic Semiconductor ASA
  *
  * SPDX-License-Identifier: LicenseRef-BSD-5-Clause-Nordic
+ */
+/**
+ * @file
+ * @brief Model handler for the TX POWER CONTROL Server.
+ *
+ * Instantiates a Generic OnOff Client model for each button on the devkit, as
+ * well as the standard Config and Health Server models. Handles all application
+ * behavior related to the models.
  */
 
 #include <zephyr/types.h>
@@ -24,17 +32,11 @@
 #include <bluetooth/mesh/dk_prov.h>
 #include <dk_buttons_and_leds.h>
 
-#define BT_MESH_NORDIC_SEMI_COMPANY_ID 0x0059
+#include "model_handler.h"
+#include "settings_srv.h"
+#include "settings.h"
 
-static struct bt_conn *default_conn;
 static uint16_t default_conn_handle;
-
-struct bt_mesh_TEST_set {
-	/** State to set - based on Button ID. int */
-	int val;
-	/** Transition parameters. */
-	const struct bt_mesh_model_transition *transition;
-};
 
 static const struct bt_data ad[] = {
 	BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
@@ -54,7 +56,7 @@ static const struct bt_le_adv_param *param =
 	BT_LE_ADV_PARAM(BT_LE_ADV_OPT_CONNECTABLE | BT_LE_ADV_OPT_USE_NAME,
 			0x0020, 0x0020, NULL);
 
-/* ONOFF Server [Testing] */
+/* Server [Testing] */
 
 /*
 static void TEST_read_conn_rssi(uint16_t handle, int8_t *rssi)
@@ -161,73 +163,62 @@ static void TEST_get_tx_power(uint8_t handle_type, uint16_t handle, uint8_t *txp
 	net_buf_unref(rsp);
 }
 
-static void led_set(struct bt_mesh_onoff_srv *srv, struct bt_mesh_msg_ctx *ctx,
-		    const struct bt_mesh_TEST_set *set,
-		    struct bt_mesh_onoff_status *rsp)
+static void TEST_set(struct bt_mesh_settings_srv *srv, struct bt_mesh_msg_ctx *ctx,
+		    const struct bt_mesh_settings_set *set,
+		    struct bt_mesh_settings_status *rsp)
 {
+	printk("LED set testing...\n");
+
 	int8_t txp_get = 0xFF;
-	int idx;
-
-	//uint8_t bid = net_buf_simple_pull_u8(set);
-	//printk("Button pressed: %d\n", bid);
-
-	//printk("TX Power set testing...\n");
-	if (set->val == 0){ // BUTTON 1
-		idx = 1; // txp -> 0 dB
-	}else if (set->val == 1){ // BUTTON 2
-		idx = 3; // txp -> -8 dB
-	}else{
-		idx = 4; // -15 dB
-	}
-	printk("\n");
-	printk("#Button id: %d\n\n", set->val);
+	uint8_t idx = 4;
 	//int8_t rssi = 0xFF;
-	
-	if (!default_conn) {
-		printk("Getting initial TX Power level....\n");
+
+		printk("Get initial Tx power level -> ");
 		TEST_get_tx_power(BT_HCI_VS_LL_HANDLE_TYPE_ADV,
 				     0, &txp_get);
-		printk("Current TX Power is %d", txp_get);
-		printk(" dB\n");
+		printk("TXP = %d\n", txp_get);
 
 		k_sleep(K_SECONDS(2));
 
-		printk("Setting TX Power level to %d", txp[idx]);
-		printk(" dB...\n");
+		printk("Set Tx power level to %d\n", txp[idx]);
 		TEST_set_tx_power(BT_HCI_VS_LL_HANDLE_TYPE_ADV,
 				     0, txp[idx]);
 
 		k_sleep(K_SECONDS(2));
 
+		printk("New Tx power level -> ");
 		TEST_get_tx_power(BT_HCI_VS_LL_HANDLE_TYPE_ADV,
 				     0, &txp_get);
-		printk("New TX Power level is set to %d", txp_get); 
-		printk(" dB\n\n");
+		printk("TXP = %d\n", txp_get);   
+
 			/*
 			TEST_read_conn_rssi(default_conn_handle, &rssi);
 			printk("Connected (%d) - RSSI = %d\n",
 			       default_conn_handle, rssi);
 			*/
-	}
 }
 
-static void led_get(struct bt_mesh_onoff_srv *srv, struct bt_mesh_msg_ctx *ctx,
-		    struct bt_mesh_onoff_status *rsp)
+static void TEST_get(struct bt_mesh_settings_srv *srv, struct bt_mesh_msg_ctx *ctx,
+		    struct bt_mesh_settings_status *rsp)
 {
-	//printk("LED get\n");
+	printk("LED get\n");
+	int8_t txp_get = 0xFF;
+	TEST_get_tx_power(BT_HCI_VS_LL_HANDLE_TYPE_ADV,
+				     0, &txp_get);
+		printk("TXP = %d\n", txp_get);
+
+	txp_get = rsp->txp_present;
 }
 
-static const struct bt_mesh_onoff_srv_handlers onoff_handlers = {
-	.set = led_set,
-	.get = led_get,
-	//.set = handle_set_message,
-	//.get = handle_get_message,
+static const struct bt_mesh_settings_srv_handlers settings_handlers = {
+	.set = TEST_set,
+	.get = TEST_get,
 };
 
-static struct bt_mesh_onoff_srv onoff_srv = BT_MESH_ONOFF_SRV_INIT(&onoff_handlers);
+static struct bt_mesh_settings_srv settings_srv = BT_MESH_SETTINGS_SRV_INIT(&settings_handlers);
 
 
-// ***********************************************
+// *********************** SNURRE I GANG BT MESH ************************
 
 /** Configuration server definition */
 static struct bt_mesh_cfg_srv cfg_srv = {
@@ -283,23 +274,13 @@ static struct bt_mesh_health_srv health_srv = {
 
 BT_MESH_HEALTH_PUB_DEFINE(health_pub, 0);
 
-// ENDRES TIL KORREKT MODELL
 static struct bt_mesh_elem elements[] = {
 	BT_MESH_ELEM(1,
 		     BT_MESH_MODEL_LIST(BT_MESH_MODEL_CFG_SRV(&cfg_srv),
 					BT_MESH_MODEL_HEALTH_SRV(&health_srv,
 								 &health_pub),
-					BT_MESH_MODEL_ONOFF_SRV(&onoff_srv)), // BARE ENDRE DENNE LINJEN(E)
+					BT_MESH_MODEL_SETTINGS_SRV(&settings_srv)),
 		     BT_MESH_MODEL_NONE),
-	// BT_MESH_ELEM(
-	// 	2, BT_MESH_MODEL_LIST(BT_MESH_MODEL_ONOFF_SRV(&onoff_srv)),
-	// 	BT_MESH_MODEL_NONE),
-	// BT_MESH_ELEM(
-	// 	3, BT_MESH_MODEL_LIST(BT_MESH_MODEL_ONOFF_SRV(&onoff_srv)),
-	// 	BT_MESH_MODEL_NONE),
-	// BT_MESH_ELEM(
-	// 	4, BT_MESH_MODEL_LIST(BT_MESH_MODEL_ONOFF_SRV(&onoff_srv)),
-	// 	BT_MESH_MODEL_NONE),
 };
 
 static const struct bt_mesh_comp comp = {
@@ -315,58 +296,4 @@ const struct bt_mesh_comp *model_handler_init(void)
 	// INITIALIZATION IF NEEDED
 
 	return &comp;
-}
-
-// *********************************************************************
-
-static void bt_ready(int err)
-{
-	if (err) {
-		printk("Bluetooth init failed (err %d)\n", err);
-		return;
-	}
-
-	printk("Bluetooth initialized\n");
-
-	/* Start advertising */ /*
-	err = bt_le_adv_start(param, ad, ARRAY_SIZE(ad),
-			      NULL, 0);
-	if (err) {
-		printk("Advertising failed to start (err %d)\n", err);
-		return;
-	}
-
-	printk("Dynamic Tx power Beacon started\n");
-	*/
-
-	dk_leds_init();
-	dk_buttons_init(NULL);
-
-	err = bt_mesh_init(bt_mesh_dk_prov_init(), model_handler_init());
-	if (err) {
-		printk("Initializing mesh failed (err %d)\n", err);
-		return;
-	}
-
-	if (IS_ENABLED(CONFIG_SETTINGS)) {
-		settings_load();
-	}
-
-	/* This will be a no-op if settings_load() loaded provisioning info */
-	bt_mesh_prov_enable(BT_MESH_PROV_ADV | BT_MESH_PROV_GATT);
-
-	printk("Mesh initialized\n");
-}
-
-void main(void)
-{
-	int err;
-	default_conn = NULL;
-
-	printk("Initializing...\n");
-
-	err = bt_enable(bt_ready);
-	if (err) {
-		printk("Bluetooth init failed (err %d)\n", err);
-	}
 }

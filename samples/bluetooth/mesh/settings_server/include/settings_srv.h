@@ -14,7 +14,7 @@
 #define BT_MESH_SETTINGS_SRV_H__
 
 #include <bluetooth/mesh/model_types.h>
-#include "settings_mod.h"
+#include "settings.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -39,8 +39,8 @@ struct bt_mesh_settings_srv;
 		.handlers = _handlers,                                         \
 		.pub = {                                                       \
 			.msg = NET_BUF_SIMPLE(BT_MESH_MODEL_BUF_LEN(           \
-				BT_MESH_SETTINGS_OP_STATUS,                       \
-				BT_MESH_SETTINGS_MSG_LEN_STATUS)),             \
+				BT_MESH_DEVICE_SETTINGS_STATUS_OP,                       \
+				BT_MESH_DEVICE_SETTINGS_MSG_LEN_STATUS)),             \
 		},                                                             \
 	}
 
@@ -106,18 +106,19 @@ struct bt_mesh_settings_srv_handlers {
 
 /* Message handlers */
 
-static void handle_get_message(struct bt_mesh_model *model,
+static void handle_get(struct bt_mesh_model *model,
                                   struct bt_mesh_msg_ctx *ctx,
                                   struct net_buf_simple *buf);
 
-static void handle_set_message(struct bt_mesh_model *model,
+static void handle_set(struct bt_mesh_model *model,
                                   struct bt_mesh_msg_ctx *ctx,
-                                  struct net_buf_simple *buf);                                
+                                  struct net_buf_simple *buf, bool ack);                                
 
 
 /* GET AND SET TX POWER LEVEL ON LOCAL SERVER */ 
 static void set_tx_power(uint8_t handle_type, uint16_t handle, uint8_t txp_lvl);
 static void get_tx_power(uint8_t handle_type, uint16_t handle, uint8_t *txp_lvl);
+static void read_conn_rssi(uint16_t handle, int8_t *rssi);
 
 #ifdef __cplusplus
 }

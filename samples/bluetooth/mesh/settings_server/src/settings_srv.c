@@ -22,48 +22,96 @@
 /* Receiving messages - Message handlers: bt_mesh_model_op.func, used to process the received message
 */
 
-static void handle_get_message(struct bt_mesh_model *model,
+static void handle_get(struct bt_mesh_model *model,
                                   struct bt_mesh_msg_ctx *ctx,
                                   struct net_buf_simple *buf)
 {
     if (buf->len != BT_MESH_DEVICE_SETTINGS_MSG_LEN_GET) {
 		return;
 	}
-    send_status_message(model, &ctx, &buf);
 
+	struct bt_mesh_settings_srv *srv = model->user_data;
+	struct bt_mesh_settings_status status = { 0 };
+
+	// run handler
+	srv->handlers->get(srv, ctx, &status);
+
+    rsp_status(model, &ctx, &buf);
 }
 
-static void handle_set_message(struct bt_mesh_model *model,
+// For unack, set ack = false
+static void handle_set(struct bt_mesh_model *model,
                                   struct bt_mesh_msg_ctx *ctx,
-                                  struct net_buf_simple *buf)
+                                  struct net_buf_simple *buf, bool ack)
 {
-    if ((buf->len < BT_MESH_DEVICE_SETTINGS_MSG_MINLEN_SET) || 
-		(buf->len > BT_MESH_DEVICE_SETTINGS_MSG_MAXLEN_SET)) {
+    if (buf->len != BT_MESH_DEVICE_SETTINGS_MSG_MINLEN_SET &&
+	    buf->len != BT_MESH_DEVICE_SETTINGS_MSG_MAXLEN_SET) {
 		return;
 	}
-    uint8_t txp_value = net_buf_simple_pull_u8(buf);
-    set_tx_power(BT_HCI_VS_LL_HANDLE_TYPE_ADV, 0, txp_value); // DO: check handle type
 
-    BT_MESH_MODEL_BUF_DEFINE(reply, BT_MESH_DEVICE_SETTINGS_ACK_OP, BT_MESH_DEVICE_SETTINGS_MSG_ACK_LEN);
-    bt_mesh_model_msg_init(&reply, BT_MESH_DEVICE_SETTINGS_ACK_OP);
+	struct bt_mesh_settings_srv *srv = model->user_data;
+	struct bt_mesh_settings_status status = { 0 };
+	struct bt_mesh_model_transition transition;
+	struct bt_mesh_settings_set set;
 
-    // DO: Fill the reply buffer here...
-		// -> Make rsp_status() function...
+	// extract set message
+	int8_t txp = net_buf_simple_pull_u8(buf);
+	uint8_t tid = net_buf_simple_pull_u8(buf);
 
-    (void) bt_mesh_model_send(model, ctx, &reply, NULL, NULL);
+	set.txp_value = txp;
+
+	if (tid_check_and_update(&srv->prev_transaction, tid, ctx) != 0) {
+		/* If this is the same transaction, we don't need to send it
+		 * to the app, but we still have to respond with a status.
+		 */
+		srv->handlers->get(srv, NULL, &status);
+		goto respond;
+	}
+
+	if (buf->len == 2) {
+		model_transition_buf_pull(buf, &transition);
+	} else {
+		bt_mesh_dtt_srv_transition_get(srv->model, &transition);
+	}
+
+	set.transition = &transition;
+
+	// run handler
+	srv->handlers->set(srv, ctx, &set, &status);
+
+	(void)bt_mesh_onoff_srv_pub(srv, NULL, &status);
+
+respond:
+	if (ack) {
+		rsp_status(model, ctx, &status);
+	}
 }
 
-// OPcode list: defines a list of messages that the server will receive
+
+/* OP CODE LIST: defines a list of messages that the server will receive */
 const struct bt_mesh_model_op _bt_mesh_settings_srv_op[] = {
-    { BT_MESH_DEVICE_SETTINGS_GET_OP,    BT_MESH_DEVICE_SETTINGS_MSG_LEN_GET,    handle_get_message },
-    { BT_MESH_DEVICE_SETTINGS_SET_OP,    BT_MESH_DEVICE_SETTINGS_MSG_MINLEN_SET,    handle_set_message },
+    { BT_MESH_DEVICE_SETTINGS_GET_OP,    BT_MESH_DEVICE_SETTINGS_MSG_LEN_GET,    handle_get },
+    { BT_MESH_DEVICE_SETTINGS_SET_OP,    BT_MESH_DEVICE_SETTINGS_MSG_MINLEN_SET,    handle_set },
     BT_MESH_MODEL_OP_END,
 }
 
 /* Sending messages */
 
-static int send_status_message(struct bt_mesh_model *model,
-		       struct bt_mesh_msg_ctx *rx_ctx,
+static void encode_status(struct net_buf_simple *buf,
+			  const struct bt_mesh_settings_status *status)
+{
+	bt_mesh_model_msg_init(buf, BT_MESH_DEVICE_SETTINGS_STATUS_OP);
+	net_buf_simple_add_u8(buf, status->txp_present);
+
+	if (status->remaining_time != 0) {
+		net_buf_simple_add_u8(buf, status->txp_target);
+		net_buf_simple_add_u8(
+			buf, model_transition_encode(status->remaining_time));
+	}
+};
+
+static int rsp_status(struct bt_mesh_model *model,
+		       struct bt_mesh_msg_ctx *ctx,
 		       const struct bt_mesh_settings_status *status)
 {
     // prepare a buffer that will contain the message data together with the opcode:
@@ -73,12 +121,10 @@ static int send_status_message(struct bt_mesh_model *model,
     // set the opcode of the message:
     bt_mesh_model_msg_init(&buf, BT_MESH_DEVICE_SETTINGS_STATUS_OP);
 
-    uint8_t txp_get = 0xFF;
-	get_tx_power(BT_HCI_VS_LL_HANDLE_TYPE_ADV, 0, &txp_get); // DO: check handle type
-	net_buf_simple_add_u8(buf, txp_get);
+    encode_status(&buf, status);
 
     return bt_mesh_model_send(model, &ctx, &buf, NULL, NULL);
-}
+};
 
 /* Callbacks: -> Additional model initialization */
 static int bt_mesh_settings_srv_init(struct bt_mesh_model *model)
@@ -98,8 +144,6 @@ static int bt_mesh_settings_srv_init(struct bt_mesh_model *model)
 const struct bt_mesh_model_cb _bt_mesh_settings_srv_cb = {
 	.init = bt_mesh_settings_srv_init,
 };
-
-
 
 // TX POWER
 /** Functions form Bluetooth: HCI Power Control
